@@ -154,6 +154,9 @@ function initApp() {
     // Load data from localStorage
     loadAllData();
     
+    // Check storage usage
+    checkStorageUsage();
+    
     // Initialize Quill editor for block content
     initBlockEditor();
     
@@ -164,19 +167,48 @@ function initApp() {
     renderTemplatesList();
     updateClientSelector();
     
-    // Set up drag and drop
+    // Set up drag and drop for document blocks
     initDragAndDrop();
     
     // Set up keyboard shortcuts
     setupKeyboardShortcuts();
     
+    // Set up auto-save on title change
+    const titleInput = document.getElementById('document-title');
+    if (titleInput) {
+        titleInput.addEventListener('input', debounce(function() {
+            if (currentDocumentId) {
+                updateDocumentTitle();
+                showNotification('💾 Dokumentum mentve', 'success');
+            }
+        }, 1000));
+    }
+    
+    // Set up client selector auto-save
+    const clientSelector = document.getElementById('client-selector');
+    if (clientSelector) {
+        clientSelector.addEventListener('change', function() {
+            if (currentDocumentId) {
+                assignClientToDocument();
+                showNotification('👤 Ügyfél hozzárendelve', 'success');
+            }
+        });
+    }
+    
     // Show welcome message on first load
     const hasDocuments = Object.keys(documents).length > 0;
-    if (!hasDocuments) {
+    const hasClients = Object.keys(clients).length > 0;
+    
+    if (!hasDocuments && !hasClients) {
         setTimeout(() => {
             showNotification('👋 Üdvözöljük! Kezdje új dokumentum létrehozásával.', 'info');
         }, 500);
     }
+    
+    // Log performance metrics
+    setTimeout(() => {
+        logPerformanceMetrics();
+    }, 1000);
     
     console.log('✅ Application initialized successfully');
     console.log('📊 Statistics:', {
@@ -185,6 +217,24 @@ function initApp() {
         templates: Object.keys(templates).length,
         groups: Object.keys(groups).length
     });
+}
+
+/**
+ * Debounce function to limit rate of function calls
+ * @param {Function} func - Function to debounce
+ * @param {number} wait - Wait time in milliseconds
+ * @returns {Function} Debounced function
+ */
+function debounce(func, wait) {
+    let timeout;
+    return function executedFunction(...args) {
+        const later = () => {
+            clearTimeout(timeout);
+            func(...args);
+        };
+        clearTimeout(timeout);
+        timeout = setTimeout(later, wait);
+    };
 }
 
 /**
@@ -257,17 +307,26 @@ function initBlockEditor() {
  * @param {string} tabName - Name of tab to switch to
  */
 function switchTab(tabName) {
-    // Remove active class from all tabs
+    // Remove active class from all tabs and update ARIA
     document.querySelectorAll('.tab-btn').forEach(btn => {
         btn.classList.remove('active');
+        btn.setAttribute('aria-selected', 'false');
     });
     document.querySelectorAll('.tab-pane').forEach(pane => {
         pane.classList.remove('active');
     });
     
-    // Add active class to selected tab
-    document.querySelector(`[data-tab="${tabName}"]`).classList.add('active');
-    document.getElementById(`${tabName}-tab`).classList.add('active');
+    // Add active class to selected tab and update ARIA
+    const selectedTab = document.querySelector(`[data-tab="${tabName}"]`);
+    if (selectedTab) {
+        selectedTab.classList.add('active');
+        selectedTab.setAttribute('aria-selected', 'true');
+    }
+    
+    const selectedPane = document.getElementById(`${tabName}-tab`);
+    if (selectedPane) {
+        selectedPane.classList.add('active');
+    }
     
     // Load data for the tab
     switch(tabName) {
@@ -1675,6 +1734,90 @@ function setupKeyboardShortcuts() {
             }
         }
     });
+}
+
+/**
+ * Get localStorage usage statistics
+ * @returns {Object} Storage usage information
+ */
+function getStorageUsage() {
+    let totalSize = 0;
+    
+    for (let key in localStorage) {
+        if (localStorage.hasOwnProperty(key)) {
+            totalSize += localStorage[key].length + key.length;
+        }
+    }
+    
+    // Convert to KB
+    const usedKB = (totalSize / 1024).toFixed(2);
+    const usedMB = (totalSize / 1024 / 1024).toFixed(2);
+    
+    // Estimate quota (usually 5-10MB)
+    const estimatedQuotaMB = 5;
+    const percentUsed = ((usedMB / estimatedQuotaMB) * 100).toFixed(1);
+    
+    return {
+        totalSize: totalSize,
+        usedKB: usedKB,
+        usedMB: usedMB,
+        percentUsed: percentUsed,
+        estimatedQuotaMB: estimatedQuotaMB
+    };
+}
+
+/**
+ * Check storage usage and warn if getting full
+ */
+function checkStorageUsage() {
+    try {
+        const usage = getStorageUsage();
+        
+        console.log('💾 Storage Usage:', {
+            used: usage.usedMB + ' MB',
+            percent: usage.percentUsed + '%',
+            quota: usage.estimatedQuotaMB + ' MB (estimated)'
+        });
+        
+        // Warning at 70%
+        if (parseFloat(usage.percentUsed) > 70) {
+            showNotification(
+                `⚠️ Tárhely figyelmeztetés: ${usage.percentUsed}% felhasználva. Készítsen biztonsági mentést!`, 
+                'warning'
+            );
+        }
+        
+        // Critical at 90%
+        if (parseFloat(usage.percentUsed) > 90) {
+            showNotification(
+                `🚨 KRITIKUS: Tárhely majdnem tele (${usage.percentUsed}%)! Töröljön régi dokumentumokat.`, 
+                'error'
+            );
+        }
+        
+        return usage;
+    } catch (error) {
+        console.error('Error checking storage usage:', error);
+        return null;
+    }
+}
+
+/**
+ * Performance monitoring
+ */
+function logPerformanceMetrics() {
+    if (window.performance && window.performance.timing) {
+        const perfData = window.performance.timing;
+        const pageLoadTime = perfData.loadEventEnd - perfData.navigationStart;
+        const connectTime = perfData.responseEnd - perfData.requestStart;
+        const renderTime = perfData.domComplete - perfData.domLoading;
+        
+        console.log('⚡ Performance Metrics:', {
+            'Page Load Time': Math.round(pageLoadTime) + 'ms',
+            'Server Connection': Math.round(connectTime) + 'ms',
+            'DOM Render Time': Math.round(renderTime) + 'ms'
+        });
+    }
 }
 
 window.addEventListener('DOMContentLoaded', initApp);
