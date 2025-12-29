@@ -60,6 +60,14 @@
                                 + Új dokumentum
                             </button>
                         </div>
+                        <div style="padding: 0 var(--spacing-md) var(--spacing-md);">
+                            <input type="text" 
+                                   id="document-search" 
+                                   class="form-input" 
+                                   placeholder="🔍 Keresés dokumentumok között..." 
+                                   oninput="filterDocuments(this.value)"
+                                   style="margin-bottom: var(--spacing-sm);">
+                        </div>
                         <div id="documents-list" class="list-container">
                             <!-- Documents will be rendered here -->
                         </div>
