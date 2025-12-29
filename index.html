@@ -3,6 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="HACCP-CMR Documentation Builder - Élelmiszerbiztonsági dokumentáció készítő alkalmazás">
+    <meta name="theme-color" content="#2563eb">
     <title>HACCP-CMR Documentation Builder</title>
     
     <!-- Quill CSS -->
@@ -12,43 +14,66 @@
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
+    <!-- Skip to Main Content -->
+    <a href="#main-content" class="skip-link">Ugrás a tartalomra</a>
+    
     <!-- Main Application Container -->
-    <div id="app">
+    <div id="app" role="application" aria-label="HACCP-CMR Documentation Builder">
         <!-- Header -->
-        <header class="header">
+        <header class="header" role="banner">
             <div class="header-left">
                 <h1>HACCP-CMR Documentation Builder</h1>
             </div>
             <div class="header-right">
-                <button class="btn btn-primary" onclick="exportToWord()">
-                    <span>📄</span> Exportálás Word-be
+                <button class="btn btn-primary" onclick="exportToWord()" aria-label="Exportálás Word formátumba">
+                    <span aria-hidden="true">📄</span> Exportálás Word-be
                 </button>
-                <button class="btn btn-secondary" onclick="openBackupModal()">
-                    <span>💾</span> Mentés/Visszaállítás
+                <button class="btn btn-secondary" onclick="openBackupModal()" aria-label="Mentés és visszaállítás">
+                    <span aria-hidden="true">💾</span> Mentés/Visszaállítás
                 </button>
-                <span class="version-badge">v2.0.0</span>
+                <span class="version-badge" aria-label="Verzió 2.0.0">v2.0.0</span>
             </div>
         </header>
 
         <!-- Main Content Area -->
         <div class="main-container">
             <!-- Sidebar -->
-            <aside class="sidebar">
+            <aside class="sidebar" role="complementary" aria-label="Navigációs panel">
                 <!-- Tab Navigation -->
-                <div class="tab-navigation">
-                    <button class="tab-btn active" onclick="switchTab('documents')" data-tab="documents">
-                        📄 Dokumentumok
+                <nav class="tab-navigation" role="tablist" aria-label="Fő navigáció">
+                    <button class="tab-btn active" 
+                            role="tab"
+                            aria-selected="true"
+                            aria-controls="documents-tab"
+                            onclick="switchTab('documents')" 
+                            data-tab="documents">
+                        <span aria-hidden="true">📄</span> Dokumentumok
                     </button>
-                    <button class="tab-btn" onclick="switchTab('blocks')" data-tab="blocks">
-                        🧱 Blokkok
+                    <button class="tab-btn" 
+                            role="tab"
+                            aria-selected="false"
+                            aria-controls="blocks-tab"
+                            onclick="switchTab('blocks')" 
+                            data-tab="blocks">
+                        <span aria-hidden="true">🧱</span> Blokkok
                     </button>
-                    <button class="tab-btn" onclick="switchTab('clients')" data-tab="clients">
-                        👥 Ügyfelek
+                    <button class="tab-btn" 
+                            role="tab"
+                            aria-selected="false"
+                            aria-controls="clients-tab"
+                            onclick="switchTab('clients')" 
+                            data-tab="clients">
+                        <span aria-hidden="true">👥</span> Ügyfelek
                     </button>
-                    <button class="tab-btn" onclick="switchTab('templates')" data-tab="templates">
-                        📋 Sablonok
+                    <button class="tab-btn" 
+                            role="tab"
+                            aria-selected="false"
+                            aria-controls="templates-tab"
+                            onclick="switchTab('templates')" 
+                            data-tab="templates">
+                        <span aria-hidden="true">📋</span> Sablonok
                     </button>
-                </div>
+                </nav>
 
                 <!-- Tab Content -->
                 <div class="tab-content">
@@ -115,20 +140,34 @@
             </aside>
 
             <!-- Main Canvas -->
-            <main class="canvas">
+            <main class="canvas" id="main-content" role="main" aria-label="Dokumentum szerkesztő">
                 <div id="document-editor">
                     <div class="canvas-header">
-                        <input type="text" id="document-title" class="document-title-input" placeholder="Dokumentum címe..." onchange="updateDocumentTitle()">
+                        <label for="document-title" class="sr-only">Dokumentum címe</label>
+                        <input type="text" 
+                               id="document-title" 
+                               class="document-title-input" 
+                               placeholder="Dokumentum címe..." 
+                               onchange="updateDocumentTitle()"
+                               aria-label="Dokumentum címe">
                         <div class="canvas-actions">
-                            <select id="client-selector" onchange="assignClientToDocument()">
+                            <label for="client-selector" class="sr-only">Ügyfél kiválasztása</label>
+                            <select id="client-selector" 
+                                    onchange="assignClientToDocument()"
+                                    aria-label="Ügyfél kiválasztása">
                                 <option value="">Válassz ügyfelet...</option>
                             </select>
                         </div>
                     </div>
-                    <div id="blocks-canvas" class="blocks-canvas">
+                    <div id="blocks-canvas" 
+                         class="blocks-canvas" 
+                         role="region" 
+                         aria-label="Dokumentum tartalma"
+                         aria-live="polite">
                         <!-- Document blocks will be rendered here -->
                         <div class="empty-state">
-                            <p>🧱 Húzd ide a blokkokat a bal oldali menüből</p>
+                            <p aria-hidden="true">🧱</p>
+                            <p>Húzd ide a blokkokat a bal oldali menüből</p>
                             <p>vagy kattints az "Új blokk hozzáadása" gombra</p>
                         </div>
                     </div>
