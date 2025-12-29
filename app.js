@@ -145,6 +145,12 @@ function clearAllStorage() {
 function initApp() {
     console.log(`${APP_NAME} v${VERSION} - Initializing...`);
     
+    // Check localStorage availability
+    if (!window.localStorage) {
+        alert('⚠️ A böngésző nem támogatja a localStorage-t!\n\nAz alkalmazás nem fog működni.');
+        return;
+    }
+    
     // Load data from localStorage
     loadAllData();
     
@@ -161,7 +167,24 @@ function initApp() {
     // Set up drag and drop
     initDragAndDrop();
     
-    console.log('Application initialized successfully');
+    // Set up keyboard shortcuts
+    setupKeyboardShortcuts();
+    
+    // Show welcome message on first load
+    const hasDocuments = Object.keys(documents).length > 0;
+    if (!hasDocuments) {
+        setTimeout(() => {
+            showNotification('👋 Üdvözöljük! Kezdje új dokumentum létrehozásával.', 'info');
+        }, 500);
+    }
+    
+    console.log('✅ Application initialized successfully');
+    console.log('📊 Statistics:', {
+        documents: Object.keys(documents).length,
+        clients: Object.keys(clients).length,
+        templates: Object.keys(templates).length,
+        groups: Object.keys(groups).length
+    });
 }
 
 /**
@@ -287,6 +310,8 @@ function createNewDocument() {
     // Open the document
     openDocument(docId);
     renderDocumentsList();
+    
+    showNotification('📄 Új dokumentum létrehozva', 'success');
 }
 
 /**
@@ -306,6 +331,9 @@ function openDocument(docId) {
     document.getElementById('document-title').value = doc.title;
     document.getElementById('client-selector').value = doc.clientId || '';
     
+    // Update document stats
+    updateDocumentStats(doc);
+    
     // Render blocks
     renderDocumentBlocks();
     
@@ -317,6 +345,32 @@ function openDocument(docId) {
     if (activeItem) {
         activeItem.classList.add('active');
     }
+}
+
+/**
+ * Update document statistics display
+ * @param {Object} doc - Document object
+ */
+function updateDocumentStats(doc) {
+    const statsElement = document.getElementById('document-stats');
+    if (!statsElement) {
+        // Create stats element if it doesn't exist
+        const canvasActions = document.querySelector('.canvas-actions');
+        const stats = document.createElement('div');
+        stats.id = 'document-stats';
+        stats.style.cssText = 'margin-top: var(--spacing-sm); font-size: 12px; color: var(--text-secondary);';
+        canvasActions.appendChild(stats);
+    }
+    
+    const blockCount = doc.blocks ? doc.blocks.length : 0;
+    const createdDate = new Date(doc.createdAt).toLocaleDateString('hu-HU');
+    const updatedDate = new Date(doc.updatedAt).toLocaleDateString('hu-HU');
+    
+    document.getElementById('document-stats').innerHTML = `
+        📊 ${blockCount} blokk | 
+        📅 Létrehozva: ${createdDate} | 
+        🔄 Módosítva: ${updatedDate}
+    `;
 }
 
 /**
@@ -412,7 +466,11 @@ function renderDocumentsList() {
         const date = new Date(doc.updatedAt).toLocaleDateString('hu-HU');
         
         return `
-            <div class="list-item ${currentDocumentId === doc.id ? 'active' : ''}" data-doc-id="${doc.id}" onclick="openDocument('${doc.id}')">
+            <div class="list-item ${currentDocumentId === doc.id ? 'active' : ''}" 
+                 data-doc-id="${doc.id}" 
+                 data-doc-title="${doc.title.toLowerCase()}"
+                 data-client-name="${client ? client.companyName.toLowerCase() : ''}"
+                 onclick="openDocument('${doc.id}')">
                 <div class="list-item-title">${doc.title}</div>
                 <div class="list-item-meta">
                     <span>${client ? '👤 ' + client.companyName : '—'}</span>
@@ -428,6 +486,44 @@ function renderDocumentsList() {
 }
 
 /**
+ * Filter documents by search query
+ * @param {string} query - Search query
+ */
+function filterDocuments(query) {
+    const items = document.querySelectorAll('#documents-list .list-item');
+    const searchLower = query.toLowerCase().trim();
+    
+    if (!searchLower) {
+        // Show all documents
+        items.forEach(item => item.style.display = '');
+        return;
+    }
+    
+    let visibleCount = 0;
+    items.forEach(item => {
+        const title = item.getAttribute('data-doc-title') || '';
+        const client = item.getAttribute('data-client-name') || '';
+        
+        const matches = title.includes(searchLower) || client.includes(searchLower);
+        item.style.display = matches ? '' : 'none';
+        if (matches) visibleCount++;
+    });
+    
+    // Show message if no results
+    const container = document.getElementById('documents-list');
+    const existingMessage = container.querySelector('.search-no-results');
+    
+    if (visibleCount === 0 && !existingMessage) {
+        const message = document.createElement('div');
+        message.className = 'empty-state search-no-results';
+        message.innerHTML = '<p>🔍</p><p>Nincs találat: "' + query + '"</p>';
+        container.appendChild(message);
+    } else if (visibleCount > 0 && existingMessage) {
+        existingMessage.remove();
+    }
+}
+
+/**
  * Render document blocks in canvas
  */
 function renderDocumentBlocks() {
@@ -435,6 +531,9 @@ function renderDocumentBlocks() {
     
     const doc = documents[currentDocumentId];
     const canvas = document.getElementById('blocks-canvas');
+    
+    // Update stats
+    updateDocumentStats(doc);
     
     if (!doc.blocks || doc.blocks.length === 0) {
         canvas.innerHTML = '<div class="empty-state"><p>🧱 Húzd ide a blokkokat a bal oldali menüből</p><p>vagy kattints az "Új blokk hozzáadása" gombra</p></div>';
@@ -1010,6 +1109,134 @@ function deleteTemplate(templateId) {
 // ==================== EXPORT TO WORD ====================
 
 /**
+ * Convert HTML block to docx.js paragraph
+ * @param {string} html - HTML content
+ * @returns {Array} Array of docx paragraph objects
+ */
+function htmlToDocxParagraphs(html) {
+    const tempDiv = document.createElement('div');
+    tempDiv.innerHTML = html;
+    
+    const paragraphs = [];
+    
+    // Process each child element
+    Array.from(tempDiv.children).forEach(element => {
+        const tagName = element.tagName.toLowerCase();
+        
+        switch(tagName) {
+            case 'h1':
+                paragraphs.push(new docx.Paragraph({
+                    text: element.textContent,
+                    heading: docx.HeadingLevel.HEADING_1,
+                    spacing: { before: 240, after: 120 }
+                }));
+                break;
+                
+            case 'h2':
+                paragraphs.push(new docx.Paragraph({
+                    text: element.textContent,
+                    heading: docx.HeadingLevel.HEADING_2,
+                    spacing: { before: 200, after: 100 }
+                }));
+                break;
+                
+            case 'h3':
+                paragraphs.push(new docx.Paragraph({
+                    text: element.textContent,
+                    heading: docx.HeadingLevel.HEADING_3,
+                    spacing: { before: 180, after: 80 }
+                }));
+                break;
+                
+            case 'p':
+                const children = [];
+                element.childNodes.forEach(node => {
+                    if (node.nodeType === Node.TEXT_NODE) {
+                        children.push(new docx.TextRun(node.textContent));
+                    } else if (node.nodeType === Node.ELEMENT_NODE) {
+                        const text = node.textContent;
+                        const tag = node.tagName.toLowerCase();
+                        
+                        if (tag === 'strong' || tag === 'b') {
+                            children.push(new docx.TextRun({ text, bold: true }));
+                        } else if (tag === 'em' || tag === 'i') {
+                            children.push(new docx.TextRun({ text, italics: true }));
+                        } else if (tag === 'u') {
+                            children.push(new docx.TextRun({ text, underline: {} }));
+                        } else {
+                            children.push(new docx.TextRun(text));
+                        }
+                    }
+                });
+                
+                paragraphs.push(new docx.Paragraph({
+                    children: children.length > 0 ? children : [new docx.TextRun(element.textContent)],
+                    spacing: { before: 120, after: 120 }
+                }));
+                break;
+                
+            case 'ul':
+                Array.from(element.children).forEach((li, index) => {
+                    paragraphs.push(new docx.Paragraph({
+                        text: li.textContent,
+                        bullet: { level: 0 },
+                        spacing: { before: 80, after: 80 }
+                    }));
+                });
+                break;
+                
+            case 'ol':
+                Array.from(element.children).forEach((li, index) => {
+                    paragraphs.push(new docx.Paragraph({
+                        text: li.textContent,
+                        numbering: {
+                            reference: 'default-numbering',
+                            level: 0
+                        },
+                        spacing: { before: 80, after: 80 }
+                    }));
+                });
+                break;
+                
+            case 'img':
+                // Images are handled as base64 - add placeholder text
+                paragraphs.push(new docx.Paragraph({
+                    text: '[Kép: ' + (element.alt || 'csatolt kép') + ']',
+                    spacing: { before: 120, after: 120 }
+                }));
+                break;
+                
+            case 'div':
+                // Handle div content recursively
+                if (element.querySelector('img')) {
+                    const img = element.querySelector('img');
+                    paragraphs.push(new docx.Paragraph({
+                        text: '[Kép: ' + (img.alt || 'csatolt kép') + ']',
+                        spacing: { before: 120, after: 120 }
+                    }));
+                } else if (element.textContent.trim()) {
+                    paragraphs.push(new docx.Paragraph({
+                        text: element.textContent,
+                        spacing: { before: 120, after: 120 }
+                    }));
+                }
+                break;
+                
+            default:
+                // Fallback for unknown elements
+                if (element.textContent.trim()) {
+                    paragraphs.push(new docx.Paragraph({
+                        text: element.textContent,
+                        spacing: { before: 120, after: 120 }
+                    }));
+                }
+        }
+    });
+    
+    return paragraphs;
+}
+
+/**
  * Export current document to Word (.docx) format
  */
 async function exportToWord() {
@@ -1020,23 +1247,101 @@ async function exportToWord() {
     
     const doc = documents[currentDocumentId];
     
+    if (!doc.blocks || doc.blocks.length === 0) {
+        alert('A dokumentum üres! Adjon hozzá tartalmat az exportáláshoz.');
+        return;
+    }
+    
     try {
-        // This is a placeholder - actual implementation would use docx.js
-        alert('Word export funkció hamarosan elérhető!\n\nA dokumentum exportálása DOCX formátumba.');
+        // Convert all blocks to docx paragraphs
+        const allParagraphs = [];
         
-        // TODO: Implement actual DOCX export using docx.js library
-        // Example structure:
-        // const docxDoc = new docx.Document({
-        //     sections: [{
-        //         children: doc.blocks.map(block => convertToDocxParagraph(block))
-        //     }]
-        // });
-        // const blob = await docx.Packer.toBlob(docxDoc);
-        // saveAs(blob, `${doc.title}.docx`);
+        // Add document title as main heading
+        allParagraphs.push(new docx.Paragraph({
+            text: doc.title || 'Névtelen dokumentum',
+            heading: docx.HeadingLevel.TITLE,
+            alignment: docx.AlignmentType.CENTER,
+            spacing: { after: 400 }
+        }));
+        
+        // Add client info if present
+        if (doc.clientId && clients[doc.clientId]) {
+            const client = clients[doc.clientId];
+            allParagraphs.push(new docx.Paragraph({
+                text: 'Ügyfél: ' + client.companyName,
+                spacing: { after: 240 }
+            }));
+            
+            if (client.contactPerson) {
+                allParagraphs.push(new docx.Paragraph({
+                    text: 'Kapcsolattartó: ' + client.contactPerson,
+                    spacing: { after: 120 }
+                }));
+            }
+            
+            // Add spacing after client info
+            allParagraphs.push(new docx.Paragraph({
+                text: '',
+                spacing: { after: 240 }
+            }));
+        }
+        
+        // Add document creation date
+        allParagraphs.push(new docx.Paragraph({
+            text: 'Létrehozva: ' + new Date(doc.createdAt).toLocaleDateString('hu-HU'),
+            spacing: { after: 400 }
+        }));
+        
+        // Process each block
+        doc.blocks.forEach(block => {
+            const blockParagraphs = htmlToDocxParagraphs(block.content);
+            allParagraphs.push(...blockParagraphs);
+        });
+        
+        // Create the document
+        const docxDocument = new docx.Document({
+            numbering: {
+                config: [{
+                    reference: 'default-numbering',
+                    levels: [
+                        {
+                            level: 0,
+                            format: docx.LevelFormat.DECIMAL,
+                            text: '%1.',
+                            alignment: docx.AlignmentType.LEFT,
+                            style: {
+                                paragraph: {
+                                    indent: { left: 720, hanging: 360 }
+                                }
+                            }
+                        }
+                    ]
+                }]
+            },
+            sections: [{
+                properties: {
+                    page: {
+                        margin: {
+                            top: 1440,
+                            right: 1440,
+                            bottom: 1440,
+                            left: 1440
+                        }
+                    }
+                },
+                children: allParagraphs
+            }]
+        });
+        
+        // Generate and download
+        const blob = await docx.Packer.toBlob(docxDocument);
+        saveAs(blob, (doc.title || 'dokumentum') + '.docx');
+        
+        alert('✅ A dokumentum sikeresen exportálva Word formátumba!');
         
     } catch (error) {
         console.error('Export error:', error);
-        alert('Hiba történt az exportálás során!');
+        alert('❌ Hiba történt az exportálás során:\n' + error.message);
     }
 }
 
@@ -1198,28 +1503,90 @@ function clearAllData() {
 // ==================== IMAGE UPLOAD ====================
 
 /**
- * Upload image to block
+ * Upload image to block with size optimization
  * @param {HTMLElement} element - Image upload area element
  */
 function uploadImage(element) {
     const input = document.createElement('input');
     input.type = 'file';
-    input.accept = 'image/*';
+    input.accept = 'image/jpeg,image/jpg,image/png,image/gif,image/webp';
     
     input.onchange = function(e) {
         const file = e.target.files[0];
         if (!file) return;
         
+        // Check file size (max 2MB recommended)
+        const maxSize = 2 * 1024 * 1024; // 2MB
+        if (file.size > maxSize) {
+            if (!confirm('A kép mérete ' + Math.round(file.size / 1024 / 1024 * 10) / 10 + ' MB.\n' +
+                        'A nagy képek növelhetik a tárolási helyet és lassíthatják az alkalmazást.\n' +
+                        'Javasolt: max 2MB, 800px szélesség.\n\n' +
+                        'Biztosan folytatja a feltöltést?')) {
+                return;
+            }
+        }
+        
+        // Show loading indicator
+        element.innerHTML = '<div style="padding: 40px; text-align: center; color: #64748b;">📤 Kép feltöltése...</div>';
+        
         const reader = new FileReader();
         reader.onload = function(event) {
-            const img = `<img src="${event.target.result}" style="max-width: 100%; height: auto; border-radius: 8px;">`;
-            element.innerHTML = img;
+            const img = new Image();
+            img.onload = function() {
+                // Create canvas for potential resizing
+                let width = img.width;
+                let height = img.height;
+                const maxWidth = 800;
+                
+                // Resize if needed
+                if (width > maxWidth) {
+                    height = Math.round(height * maxWidth / width);
+                    width = maxWidth;
+                }
+                
+                // Create canvas
+                const canvas = document.createElement('canvas');
+                canvas.width = width;
+                canvas.height = height;
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(img, 0, 0, width, height);
+                
+                // Convert to base64 (with quality adjustment for JPEGs)
+                const quality = file.size > maxSize ? 0.7 : 0.9;
+                const imageDataUrl = canvas.toDataURL('image/jpeg', quality);
+                
+                // Display image
+                element.innerHTML = `
+                    <div style="position: relative; display: inline-block; max-width: 100%;">
+                        <img src="${imageDataUrl}" 
+                             style="max-width: 100%; height: auto; border-radius: 8px; display: block;"
+                             alt="${file.name}">
+                        <button onclick="removeImage(this)" 
+                                style="position: absolute; top: 8px; right: 8px; 
+                                       background: rgba(239, 68, 68, 0.9); color: white; 
+                                       border: none; border-radius: 4px; padding: 6px 10px; 
+                                       cursor: pointer; font-size: 12px; font-weight: 600;">
+                            🗑️ Eltávolítás
+                        </button>
+                    </div>
+                `;
+                
+                // Save document if in document context
+                if (currentDocumentId) {
+                    documents[currentDocumentId].updatedAt = Date.now();
+                    saveToStorage(`document_${currentDocumentId}`, documents[currentDocumentId]);
+                }
+            };
             
-            // Save document if in document context
-            if (currentDocumentId) {
-                documents[currentDocumentId].updatedAt = Date.now();
-                saveToStorage(`document_${currentDocumentId}`, documents[currentDocumentId]);
-            }
+            img.onerror = function() {
+                element.innerHTML = '<div style="padding: 40px; text-align: center; color: #ef4444;">❌ Hiba a kép betöltésekor</div>';
+            };
+            
+            img.src = event.target.result;
+        };
+        
+        reader.onerror = function() {
+            element.innerHTML = '<div style="padding: 40px; text-align: center; color: #ef4444;">❌ Hiba a fájl olvasásakor</div>';
         };
         
         reader.readAsDataURL(file);
@@ -1228,5 +1595,86 @@ function uploadImage(element) {
     input.click();
 }
 
+/**
+ * Remove image from block
+ * @param {HTMLElement} button - Remove button element
+ */
+function removeImage(button) {
+    if (!confirm('Biztosan eltávolítja ezt a képet?')) return;
+    
+    const container = button.closest('.image-upload-area, div[style*="position: relative"]')?.parentElement;
+    if (container) {
+        container.innerHTML = '<div class="image-upload-area" onclick="uploadImage(this)" style="border: 2px dashed #ccc; padding: 40px; text-align: center; cursor: pointer; border-radius: 8px;">📷 Kattintson a kép feltöltéséhez</div>';
+        
+        // Save document if in document context
+        if (currentDocumentId) {
+            documents[currentDocumentId].updatedAt = Date.now();
+            saveToStorage(`document_${currentDocumentId}`, documents[currentDocumentId]);
+        }
+    }
+}
+
 // ==================== INITIALIZATION ON PAGE LOAD ====================
+
+/**
+ * Show notification toast message
+ * @param {string} message - Message to display
+ * @param {string} type - Type: 'success', 'error', 'info', 'warning'
+ */
+function showNotification(message, type = 'info') {
+    const notification = document.createElement('div');
+    notification.className = `notification notification-${type}`;
+    notification.textContent = message;
+    
+    // Add to body
+    document.body.appendChild(notification);
+    
+    // Trigger animation
+    setTimeout(() => {
+        notification.classList.add('show');
+    }, 100);
+    
+    // Remove after 3 seconds
+    setTimeout(() => {
+        notification.classList.remove('show');
+        setTimeout(() => {
+            notification.remove();
+        }, 300);
+    }, 3000);
+}
+
+/**
+ * Handle keyboard shortcuts
+ */
+function setupKeyboardShortcuts() {
+    document.addEventListener('keydown', function(e) {
+        // Ctrl/Cmd + S - Save document
+        if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+            e.preventDefault();
+            if (currentDocumentId) {
+                documents[currentDocumentId].updatedAt = Date.now();
+                saveToStorage(`document_${currentDocumentId}`, documents[currentDocumentId]);
+                showNotification('✅ Dokumentum mentve', 'success');
+            }
+        }
+        
+        // Ctrl/Cmd + N - New document
+        if ((e.ctrlKey || e.metaKey) && e.key === 'n') {
+            e.preventDefault();
+            createNewDocument();
+            showNotification('📄 Új dokumentum létrehozva', 'success');
+        }
+        
+        // Ctrl/Cmd + E - Export to Word
+        if ((e.ctrlKey || e.metaKey) && e.key === 'e') {
+            e.preventDefault();
+            if (currentDocumentId) {
+                exportToWord();
+            } else {
+                showNotification('⚠️ Nincs megnyitott dokumentum', 'warning');
+            }
+        }
+    });
+}
+
 window.addEventListener('DOMContentLoaded', initApp);
