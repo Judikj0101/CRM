@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="hu">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="HACCP-CMR Documentation Builder - Élelmiszerbiztonsági dokumentáció készítő alkalmazás">
+    <meta name="theme-color" content="#2563eb">
+    <title>HACCP-CMR Documentation Builder v2.2.0</title>
+    
+    <!-- Quill CSS -->
+    <link href="https://cdn.quilljs.com/1.3.6/quill.snow.css" rel="stylesheet">
+    
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <!-- Application markup stays the same -->
+    <!-- (Reuse existing index.html body content) -->
+    
+    <!-- External Libraries (load first) -->
+    <script src="https://cdn.quilljs.com/1.3.6/quill.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/docx/7.8.2/docx.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.0.6/purify.min.js"></script>
+    
+    <!-- Core Modules (load in order) -->
+    <script src="src/core/storage.js"></script>
+    <script src="src/core/state.js"></script>
+    <script src="src/core/events.js"></script>
+    
+    <!-- Utility Modules -->
+    <script src="src/utils/utils.js"></script>
+    <script src="src/utils/sanitizer.js"></script>
+    
+    <!-- UI Modules -->
+    <script src="src/ui/notifications.js"></script>
+    
+    <!-- Feature Modules -->
+    <script src="src/modules/documents.js"></script>
+    <script src="src/modules/blocks.js"></script>
+    <script src="src/modules/clients.js"></script>
+    <script src="src/modules/templates.js"></script>
+    
+    <!-- CRM Modules -->
+    <script src="crm-form-helpers.js"></script>
+    
+    <!-- Main Application (load last) -->
+    <script src="app-main.js"></script>
+    
+    <script>
+        // Initialize application when all modules loaded
+        window.addEventListener('DOMContentLoaded', function() {
+            if (typeof HACCPApp !== 'undefined') {
+                HACCPApp.init();
+            } else {
+                console.error('HACCPApp not found! Check module loading order.');
+            }
+        });
+    </script>
+</body>
+</html>
