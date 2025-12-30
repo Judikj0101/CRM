@@ -325,8 +325,153 @@ body {
     box-shadow: var(--shadow-md);
 }
 
+.document-block.editing-active {
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+}
+
 .document-block.dragging {
     opacity: 0.5;
+}
+
+/* Block Editor Container (Inline Editing) */
+.block-editor-container {
+    min-height: 50px;
+    cursor: text;
+    transition: all 0.2s;
+}
+
+.block-editor-container:hover {
+    background-color: rgba(37, 99, 235, 0.02);
+}
+
+.block-editor-container.editing {
+    background-color: white;
+}
+
+/* Quill Editor Specific Styles for Inline Editing */
+.block-editor-container .ql-toolbar {
+    background: var(--background);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    margin-bottom: var(--spacing-sm);
+    position: sticky;
+    top: 0;
+    z-index: 100;
+}
+
+.block-editor-container .ql-container {
+    border: none;
+    font-size: 14px;
+}
+
+.block-editor-container .ql-editor {
+    min-height: 100px;
+    max-height: 600px;
+    overflow-y: auto;
+    padding: var(--spacing-md);
+}
+
+.block-editor-container .ql-editor:focus {
+    outline: none;
+}
+
+.block-editor-container .ql-editor p {
+    margin: 0 0 var(--spacing-sm) 0;
+}
+
+.block-editor-container .ql-editor h1 { 
+    font-size: 2em; 
+    font-weight: 700;
+    margin: var(--spacing-md) 0;
+}
+
+.block-editor-container .ql-editor h2 { 
+    font-size: 1.5em; 
+    font-weight: 600;
+    margin: var(--spacing-md) 0;
+}
+
+.block-editor-container .ql-editor h3 { 
+    font-size: 1.17em; 
+    font-weight: 600;
+    margin: var(--spacing-sm) 0;
+}
+
+.block-editor-container .ql-editor ul,
+.block-editor-container .ql-editor ol {
+    padding-left: var(--spacing-lg);
+    margin: var(--spacing-sm) 0;
+}
+
+.block-editor-container .ql-editor li {
+    margin-bottom: var(--spacing-xs);
+}
+
+/* Quill Toolbar Button Hover States */
+.ql-toolbar button:hover {
+    background-color: var(--primary-color);
+    color: white;
+}
+
+.ql-toolbar button.ql-active {
+    background-color: var(--primary-color);
+    color: white;
+}
+
+/* Drag Handle Styles */
+.block-drag-handle {
+    position: absolute;
+    left: -12px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 24px;
+    height: 40px;
+    background-color: var(--surface);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: grab;
+    opacity: 0;
+    transition: all 0.2s;
+    font-size: 16px;
+    color: var(--text-secondary);
+    user-select: none;
+    z-index: 10;
+}
+
+.document-block:hover .block-drag-handle {
+    opacity: 1;
+    left: -16px;
+}
+
+.block-drag-handle:active {
+    cursor: grabbing;
+}
+
+.block-drag-handle:hover {
+    background-color: var(--primary-color);
+    color: white;
+    border-color: var(--primary-color);
+}
+
+/* SortableJS Classes */
+.sortable-ghost {
+    opacity: 0.4;
+    background: var(--background);
+    border: 2px dashed var(--primary-color);
+}
+
+.sortable-drag {
+    opacity: 1;
+    box-shadow: 0 5px 20px rgba(0, 0, 0, 0.3);
+    transform: rotate(2deg);
+}
+
+.sortable-chosen {
+    cursor: grabbing;
 }
 
 .block-toolbar {
@@ -335,9 +480,11 @@ body {
     right: var(--spacing-md);
     display: none;
     gap: var(--spacing-xs);
+    z-index: 5;
 }
 
-.document-block:hover .block-toolbar {
+.document-block:hover .block-toolbar,
+.document-block.editing-active .block-toolbar {
     display: flex;
 }
 
@@ -1173,4 +1320,212 @@ select:focus,
 /* Smooth Transitions */
 * {
     transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+}
+
+/* ==================== CRM FORM STYLES (TASK-003) ==================== */
+
+/* Modal Large for Comprehensive Forms */
+.modal-large {
+    max-width: 1200px;
+    width: 95%;
+}
+
+/* CRM Form Sections - Collapsible/Accordion */
+.form-section {
+    margin: var(--spacing-lg) 0;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    overflow: hidden;
+    background-color: var(--surface);
+}
+
+.section-header {
+    background: var(--background);
+    padding: var(--spacing-md) var(--spacing-lg);
+    cursor: pointer;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    user-select: none;
+    transition: background-color 0.2s;
+}
+
+.section-header:hover {
+    background: var(--border-color);
+}
+
+.section-header h3 {
+    margin: 0;
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.toggle-icon {
+    font-size: 16px;
+    transition: transform 0.3s;
+    color: var(--text-secondary);
+}
+
+.section-content {
+    padding: var(--spacing-lg);
+    display: block;
+}
+
+/* Form Subsections */
+.form-subsection {
+    margin: var(--spacing-lg) 0;
+}
+
+.form-subsection h4 {
+    margin: 0 0 var(--spacing-md) 0;
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--text-primary);
+    border-bottom: 2px solid var(--border-color);
+    padding-bottom: var(--spacing-xs);
+}
+
+/* Checkbox Grid Layout */
+.checkbox-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+    gap: var(--spacing-sm);
+    margin: var(--spacing-md) 0;
+}
+
+.checkbox-item {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-xs);
+    padding: var(--spacing-xs);
+}
+
+.checkbox-item input[type="checkbox"] {
+    width: 18px;
+    height: 18px;
+    cursor: pointer;
+    margin: 0;
+}
+
+.checkbox-item label {
+    cursor: pointer;
+    margin: 0;
+    font-weight: normal;
+    font-size: 14px;
+}
+
+/* Checkbox with Text Input (for "Egyéb") */
+.checkbox-with-input {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+    margin: var(--spacing-xs) 0;
+}
+
+.inline-input {
+    flex: 1;
+    min-width: 200px;
+    max-width: 400px;
+}
+
+/* Matrix Table (Age Grouping) */
+.matrix-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: var(--spacing-md) 0;
+}
+
+.matrix-table th,
+.matrix-table td {
+    border: 1px solid var(--border-color);
+    padding: var(--spacing-sm);
+    text-align: center;
+}
+
+.matrix-table th {
+    background: var(--background);
+    font-weight: 600;
+    font-size: 14px;
+}
+
+.matrix-table td:first-child {
+    text-align: left;
+    font-weight: 500;
+    background: var(--background);
+}
+
+.matrix-table input[type="checkbox"] {
+    width: 20px;
+    height: 20px;
+    cursor: pointer;
+}
+
+/* Form Progress Bar */
+.form-progress {
+    margin: var(--spacing-lg) 0;
+    padding: var(--spacing-md);
+    background: var(--background);
+    border-radius: var(--radius-md);
+}
+
+.progress-bar {
+    width: 100%;
+    height: 24px;
+    background: var(--surface);
+    border-radius: 12px;
+    overflow: hidden;
+    border: 1px solid var(--border-color);
+}
+
+.progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--success-color), #10b981);
+    transition: width 0.3s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-weight: 600;
+    font-size: 12px;
+}
+
+#form-progress-text {
+    text-align: center;
+    margin-top: var(--spacing-sm);
+    font-weight: 600;
+    color: var(--success-color);
+    font-size: 14px;
+}
+
+/* Form Note (for special instructions) */
+.form-note {
+    font-size: 13px;
+    color: var(--text-secondary);
+    font-style: italic;
+    margin: var(--spacing-xs) 0;
+    padding: var(--spacing-xs) var(--spacing-sm);
+    background: var(--background);
+    border-left: 3px solid var(--primary-color);
+    border-radius: var(--radius-sm);
+}
+
+/* Responsive adjustments for CRM forms */
+@media (max-width: 768px) {
+    .checkbox-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    .matrix-table {
+        font-size: 12px;
+    }
+    
+    .matrix-table th,
+    .matrix-table td {
+        padding: var(--spacing-xs);
+    }
+    
+    .section-header h3 {
+        font-size: 16px;
+    }
 }

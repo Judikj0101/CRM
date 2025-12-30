@@ -25,6 +25,24 @@ let blockEditorQuill = null;
 let draggedType = null; // 'block' or 'document-block'
 let draggedElement = null;
 
+// Inline Block Editor State (for TASK-002)
+let activeBlockEditor = null; // Current Quill instance for inline editing
+let activeBlockId = null; // ID of currently editing block
+let activeBlockIndex = null; // Index of currently editing block
+let blockEditorSaveTimeout = null; // Debounce timer for auto-save
+
+// Quill Toolbar Configuration
+const quillToolbarOptions = [
+    [{ 'header': [1, 2, 3, false] }],
+    ['bold', 'italic', 'underline', 'strike'],
+    [{ 'color': [] }, { 'background': [] }],
+    [{ 'align': [] }],
+    [{ 'list': 'ordered'}, { 'list': 'bullet' }],
+    [{ 'indent': '-1'}, { 'indent': '+1' }],
+    ['link'],
+    ['clean']
+];
+
 // ==================== DEFAULT BLOCK TEMPLATES ====================
 // Initialize with default group
 groups = {
@@ -600,14 +618,17 @@ function renderDocumentBlocks() {
     }
     
     canvas.innerHTML = doc.blocks.map((block, index) => `
-        <div class="document-block" data-block-index="${index}" draggable="true">
+        <div class="document-block" data-block-index="${index}" data-block-id="${block.id || 'block-' + index}">
+            <div class="block-drag-handle" title="Húzd ide a blokk mozgatásához">⋮⋮</div>
             <div class="block-toolbar">
-                <button class="btn btn-small btn-icon" onclick="editDocumentBlock(${index})" title="Szerkesztés">✏️</button>
-                <button class="btn btn-small btn-icon" onclick="moveBlockUp(${index})" title="Fel" ${index === 0 ? 'disabled' : ''}>⬆️</button>
-                <button class="btn btn-small btn-icon" onclick="moveBlockDown(${index})" title="Le" ${index === doc.blocks.length - 1 ? 'disabled' : ''}>⬇️</button>
                 <button class="btn btn-small btn-icon" onclick="deleteDocumentBlock(${index})" title="Törlés">🗑️</button>
             </div>
-            <div class="block-content">${block.content}</div>
+            <div class="block-editor-container" 
+                 data-block-index="${index}" 
+                 onclick="activateInlineBlockEditor(${index})"
+                 title="Kattints a szerkesztéshez">
+                ${block.content}
+            </div>
         </div>
     `).join('');
     
@@ -630,17 +651,71 @@ function initDragAndDrop() {
  */
 function initDocumentBlocksDragDrop() {
     const canvas = document.getElementById('blocks-canvas');
-    if (canvas && window.Sortable) {
-        Sortable.create(canvas, {
-            animation: 150,
-            handle: '.document-block',
-            onEnd: function(evt) {
-                if (evt.oldIndex !== evt.newIndex) {
-                    moveBlock(evt.oldIndex, evt.newIndex);
-                }
-            }
-        });
+    if (!canvas || !window.Sortable) {
+        console.warn('SortableJS not loaded or canvas not found');
+        return;
     }
+    
+    // Destroy existing instance if any
+    if (window.blocksSortable) {
+        window.blocksSortable.destroy();
+        window.blocksSortable = null;
+    }
+    
+    // Only initialize if there are blocks
+    const blocks = canvas.querySelectorAll('.document-block');
+    if (blocks.length === 0) return;
+    
+    // Create new Sortable instance
+    window.blocksSortable = new Sortable(canvas, {
+        animation: 150,
+        handle: '.block-drag-handle',
+        ghostClass: 'sortable-ghost',
+        dragClass: 'sortable-drag',
+        chosenClass: 'sortable-chosen',
+        forceFallback: true,
+        fallbackTolerance: 3,
+        
+        onStart: function(evt) {
+            console.log('🎯 Drag started:', evt.oldIndex);
+        },
+        
+        onEnd: function(evt) {
+            // Check if position actually changed
+            if (evt.oldIndex === evt.newIndex) return;
+            
+            console.log('📋 Block reordered from', evt.oldIndex, 'to', evt.newIndex);
+            
+            // Update the blocks array order
+            if (!currentDocumentId) return;
+            
+            const doc = documents[currentDocumentId];
+            if (!doc || !doc.blocks) return;
+            
+            // Move the block in the array
+            const movedBlock = doc.blocks.splice(evt.oldIndex, 1)[0];
+            doc.blocks.splice(evt.newIndex, 0, movedBlock);
+            
+            // Update timestamp
+            doc.updatedAt = Date.now();
+            
+            // Save to localStorage
+            saveToStorage(`document_${currentDocumentId}`, doc);
+            
+            // Re-render to update indices and button states
+            renderDocumentBlocks();
+            
+            // Show notification
+            showNotification('📋 Blokkok átrendezve', 'success');
+        },
+        
+        onMove: function(evt) {
+            // Optional: Add logic to prevent certain moves if needed
+            return true; // Allow all moves
+        }
+    });
+    
+    console.log('✅ SortableJS initialized with', blocks.length, 'blocks');
 }
 
 /**
@@ -920,22 +995,41 @@ function renderClientsList() {
     const clientArray = Object.values(clients);
     
     if (clientArray.length === 0) {
-        container.innerHTML = '<div class="empty-state"><p>Még nincs ügyfél</p><p>Kattintson az "+ Új ügyfél" gombra</p></div>';
+        container.innerHTML = '<div class="empty-state"><p>👥</p><p>Még nincs ügyfél</p><p>Kattintson az "+ Új ügyfél" gombra</p></div>';
         return;
     }
     
-    container.innerHTML = clientArray.map(client => `
-        <div class="list-item" onclick="editClient('${client.id}')">
-            <div class="list-item-title">${client.companyName}</div>
-            <div class="list-item-meta">
-                <span>${client.contactPerson || '—'}</span>
-                <span>${client.email || '—'}</span>
+    container.innerHTML = clientArray.map(client => {
+        // Support both old (simple) and new (comprehensive) client structure
+        const companyName = client.companyName || 
+                           client.risk_assessment?.I_general_information?.company_data?.company_name || 
+                           'Névtelen ügyfél';
+        
+        const contactPerson = client.contactPerson || 
+                             client.risk_assessment?.I_general_information?.responsible_person_data?.appointed_contact_person_name || 
+                             '—';
+        
+        const email = client.email || 
+                     client.risk_assessment?.I_general_information?.responsible_person_data?.email || 
+                     '—';
+        
+        // Calculate completion percentage for comprehensive forms
+        const hasComprehensiveData = client.risk_assessment ? true : false;
+        const completionBadge = hasComprehensiveData ? '<span style="background: var(--success-color); color: white; padding: 2px 8px; border-radius: 12px; font-size: 11px; margin-left: 8px;">📋 Felmérés</span>' : '';
+        
+        return `
+            <div class="list-item" onclick="editClient('${client.id}')">
+                <div class="list-item-title">${companyName} ${completionBadge}</div>
+                <div class="list-item-meta">
+                    <span>👤 ${contactPerson}</span>
+                    <span>📧 ${email}</span>
+                </div>
+                <div class="list-item-actions">
+                    <button class="btn btn-small btn-icon" onclick="event.stopPropagation(); deleteClient('${client.id}')" title="Törlés">🗑️</button>
+                </div>
             </div>
-            <div class="list-item-actions">
-                <button class="btn btn-small btn-icon" onclick="event.stopPropagation(); deleteClient('${client.id}')" title="Törlés">🗑️</button>
-            </div>
-        </div>
-    `).join('');
+        `;
+    }).join('');
 }
 
 /**
@@ -943,7 +1037,17 @@ function renderClientsList() {
  */
 function createNewClient() {
     editingClientId = null;
-    clearClientForm();
+    
+    // Generate comprehensive CRM form
+    if (typeof window.generateComprehensiveCRMForm === 'function') {
+        window.generateComprehensiveCRMForm('comprehensive-crm-form', null);
+        document.getElementById('client-modal-title').textContent = 'Új ügyfél rizikóértékelése';
+    } else {
+        console.error('CRM Form Helper not loaded');
+        alert('CRM form betöltési hiba. Frissítse az oldalt.');
+        return;
+    }
+    
     document.getElementById('client-editor-modal').classList.add('active');
 }
 
@@ -955,72 +1059,61 @@ function editClient(clientId) {
     editingClientId = clientId;
     const client = clients[clientId];
     
-    // Populate form
-    document.getElementById('client-company-name').value = client.companyName || '';
-    document.getElementById('client-contact-person').value = client.contactPerson || '';
-    document.getElementById('client-email').value = client.email || '';
-    document.getElementById('client-phone').value = client.phone || '';
-    document.getElementById('client-address').value = client.address || '';
-    document.getElementById('client-city').value = client.city || '';
-    document.getElementById('client-country').value = client.country || 'Magyarország';
-    document.getElementById('client-postal-code').value = client.postalCode || '';
-    document.getElementById('client-tax-id').value = client.taxId || '';
-    document.getElementById('client-industry').value = client.industry || '';
-    document.getElementById('client-website').value = client.website || '';
-    document.getElementById('client-notes').value = client.notes || '';
+    if (!client) {
+        alert('Ügyfél nem található!');
+        return;
+    }
+    
+    // Generate comprehensive CRM form with existing data
+    if (typeof window.generateComprehensiveCRMForm === 'function') {
+        window.generateComprehensiveCRMForm('comprehensive-crm-form', client);
+        document.getElementById('client-modal-title').textContent = 'Ügyfél rizikóértékelésének szerkesztése';
+    } else {
+        console.error('CRM Form Helper not loaded');
+        alert('CRM form betöltési hiba. Frissítse az oldalt.');
+        return;
+    }
     
     document.getElementById('client-editor-modal').classList.add('active');
 }
 
 /**
- * Save client data
+ * Save comprehensive client data (TASK-003)
  */
-function saveClient() {
-    const companyName = document.getElementById('client-company-name').value.trim();
-    
-    if (!companyName) {
-        alert('A cégnév megadása kötelező!');
-        return;
-    }
-    
-    const clientData = {
-        companyName: companyName,
-        contactPerson: document.getElementById('client-contact-person').value.trim(),
-        email: document.getElementById('client-email').value.trim(),
-        phone: document.getElementById('client-phone').value.trim(),
-        address: document.getElementById('client-address').value.trim(),
-        city: document.getElementById('client-city').value.trim(),
-        country: document.getElementById('client-country').value.trim(),
-        postalCode: document.getElementById('client-postal-code').value.trim(),
-        taxId: document.getElementById('client-tax-id').value.trim(),
-        industry: document.getElementById('client-industry').value.trim(),
-        website: document.getElementById('client-website').value.trim(),
-        notes: document.getElementById('client-notes').value.trim()
-    };
-    
-    if (editingClientId) {
-        // Update existing client
-        clients[editingClientId] = {
-            ...clients[editingClientId],
-            ...clientData,
-            updatedAt: Date.now()
-        };
-    } else {
-        // Create new client
+function saveComprehensiveClient() {
+    if (!editingClientId) {
+        // Create new client first
         const clientId = `client_${Date.now()}`;
+        editingClientId = clientId;
         clients[clientId] = {
             id: clientId,
-            ...clientData,
             createdAt: Date.now(),
             updatedAt: Date.now()
         };
     }
     
-    saveToStorage('clients', clients);
+    // Force save current form data
+    if (typeof window.saveComprehensiveClientData === 'function') {
+        window.saveComprehensiveClientData();
+        showNotification('✅ Ügyfél adatai mentve', 'success');
+    } else {
+        console.error('CRM save function not available');
+        alert('Mentési hiba. Frissítse az oldalt.');
+        return;
+    }
     
     closeClientEditor();
     renderClientsList();
     updateClientSelector();
+}
+
+/**
+ * Save client data (Legacy - for simple form)
+ */
+function saveClient() {
+    // This is now handled by saveComprehensiveClient()
+    console.warn('saveClient() is deprecated, use saveComprehensiveClient()');
+    saveComprehensiveClient();
 }
 
 /**
@@ -1071,9 +1164,13 @@ function updateClientSelector() {
     const clientArray = Object.values(clients);
     
     selector.innerHTML = '<option value="">Válassz ügyfelet...</option>' +
-        clientArray.map(client => 
-            `<option value="${client.id}">${client.companyName}</option>`
-        ).join('');
+        clientArray.map(client => {
+            // Support both old and new client structure
+            const companyName = client.companyName || 
+                               client.risk_assessment?.I_general_information?.company_data?.company_name || 
+                               'Névtelen ügyfél';
+            return `<option value="${client.id}">${companyName}</option>`;
+        }).join('');
 }
 
 // ==================== TEMPLATE MANAGEMENT ====================
@@ -1558,6 +1655,175 @@ function clearAllData() {
     
     closeBackupModal();
 }
+
+// ==================== INLINE BLOCK EDITOR (TASK-002) ====================
+
+/**
+ * Activate inline rich text editor for a block
+ * @param {number} index - Block index in document
+ */
+function activateInlineBlockEditor(index) {
+    if (!currentDocumentId) return;
+    
+    // If already editing this block, do nothing
+    if (activeBlockIndex === index && activeBlockEditor) {
+        return;
+    }
+    
+    // Deactivate previous editor if any
+    if (activeBlockEditor) {
+        deactivateInlineBlockEditor();
+    }
+    
+    const doc = documents[currentDocumentId];
+    if (!doc || !doc.blocks[index]) return;
+    
+    const block = doc.blocks[index];
+    const editorContainer = document.querySelector(`[data-block-index="${index}"].block-editor-container`);
+    
+    if (!editorContainer) {
+        console.error('Editor container not found for block:', index);
+        return;
+    }
+    
+    // Store current block info
+    activeBlockIndex = index;
+    activeBlockId = block.id || `block-${index}`;
+    
+    // Initialize Quill editor
+    try {
+        activeBlockEditor = new Quill(editorContainer, {
+            theme: 'snow',
+            modules: {
+                toolbar: quillToolbarOptions
+            },
+            placeholder: 'Kezdj el gépelni...'
+        });
+        
+        // Set initial content
+        activeBlockEditor.root.innerHTML = block.content || '<p></p>';
+        
+        // Focus the editor
+        setTimeout(() => {
+            activeBlockEditor.focus();
+        }, 50);
+        
+        // Add visual indicator
+        editorContainer.classList.add('editing');
+        editorContainer.closest('.document-block').classList.add('editing-active');
+        
+        // Listen for content changes (auto-save)
+        activeBlockEditor.on('text-change', function(delta, oldDelta, source) {
+            if (source === 'user') {
+                // Debounced save (1 second)
+                clearTimeout(blockEditorSaveTimeout);
+                blockEditorSaveTimeout = setTimeout(function() {
+                    saveInlineBlockContent();
+                }, 1000);
+            }
+        });
+        
+        console.log('✅ Inline editor activated for block', index);
+        
+    } catch (error) {
+        console.error('Error activating inline editor:', error);
+    }
+}
+
+/**
+ * Deactivate inline block editor
+ */
+function deactivateInlineBlockEditor() {
+    if (!activeBlockEditor) return;
+    
+    console.log('💾 Deactivating inline editor for block', activeBlockIndex);
+    
+    // Save any pending changes
+    clearTimeout(blockEditorSaveTimeout);
+    saveInlineBlockContent();
+    
+    // Get the container before destroying
+    const container = activeBlockEditor.container;
+    
+    try {
+        // Get final content
+        const finalContent = activeBlockEditor.root.innerHTML;
+        
+        // Remove editing classes
+        if (container) {
+            container.classList.remove('editing');
+            const blockElement = container.closest('.document-block');
+            if (blockElement) {
+                blockElement.classList.remove('editing-active');
+            }
+            
+            // Restore content in view mode
+            container.innerHTML = finalContent;
+        }
+        
+        // Destroy Quill instance (important to prevent memory leaks)
+        activeBlockEditor = null;
+        
+    } catch (error) {
+        console.error('Error deactivating editor:', error);
+    }
+    
+    // Reset state
+    activeBlockIndex = null;
+    activeBlockId = null;
+}
+
+/**
+ * Save current inline block content to localStorage
+ */
+function saveInlineBlockContent() {
+    if (!activeBlockEditor || activeBlockIndex === null || !currentDocumentId) {
+        return;
+    }
+    
+    const doc = documents[currentDocumentId];
+    if (!doc || !doc.blocks[activeBlockIndex]) return;
+    
+    try {
+        // Get HTML content from Quill
+        const newContent = activeBlockEditor.root.innerHTML;
+        
+        // Update block content
+        doc.blocks[activeBlockIndex].content = newContent;
+        doc.updatedAt = Date.now();
+        
+        // Save document to localStorage
+        saveToStorage(`document_${currentDocumentId}`, doc);
+        
+        console.log('💾 Inline block content saved for block', activeBlockIndex);
+        
+        // Update stats
+        updateDocumentStats(doc);
+        
+    } catch (error) {
+        console.error('Error saving inline block content:', error);
+    }
+}
+
+/**
+ * Global click listener to deactivate editor when clicking outside
+ */
+document.addEventListener('click', function(e) {
+    // Don't deactivate if clicking:
+    // - Inside the active editor container
+    // - On a Quill toolbar
+    // - On a toolbar button
+    // - On block toolbar buttons
+    if (!activeBlockEditor) return;
+    
+    const clickedInsideEditor = e.target.closest('.block-editor-container');
+    const clickedOnToolbar = e.target.closest('.ql-toolbar');
+    const clickedOnBlockToolbar = e.target.closest('.block-toolbar');
+    
+    if (!clickedInsideEditor && !clickedOnToolbar && !clickedOnBlockToolbar) {
+        deactivateInlineBlockEditor();
+    }
+}, true); // Use capture phase
 
 // ==================== IMAGE UPLOAD ====================
 
