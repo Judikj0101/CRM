@@ -28,10 +28,10 @@
                 <h1>HACCP-CMR Documentation Builder</h1>
             </div>
             <div class="header-right">
-                <button class="btn btn-primary" onclick="exportToWord()" aria-label="Exportálás Word formátumba">
+                <button class="btn btn-primary" data-action="exportWord" aria-label="Exportálás Word formátumba">
                     <span aria-hidden="true">📄</span> Exportálás Word-be
                 </button>
-                <button class="btn btn-secondary" onclick="openBackupModal()" aria-label="Mentés és visszaállítás">
+                <button class="btn btn-secondary" data-action="openBackup" aria-label="Mentés és visszaállítás">
                     <span aria-hidden="true">💾</span> Mentés/Visszaállítás
                 </button>
                 <span class="version-badge" aria-label="Verzió 2.0.0">v2.0.0</span>
@@ -48,7 +48,7 @@
                             role="tab"
                             aria-selected="true"
                             aria-controls="documents-tab"
-                            onclick="switchTab('documents')" 
+                            data-action="switchTab" data-params='{"tab":'documents'}' 
                             data-tab="documents">
                         <span aria-hidden="true">📄</span> Dokumentumok
                     </button>
@@ -56,7 +56,7 @@
                             role="tab"
                             aria-selected="false"
                             aria-controls="blocks-tab"
-                            onclick="switchTab('blocks')" 
+                            data-action="switchTab" data-params='{"tab":'blocks'}' 
                             data-tab="blocks">
                         <span aria-hidden="true">🧱</span> Blokkok
                     </button>
@@ -64,7 +64,7 @@
                             role="tab"
                             aria-selected="false"
                             aria-controls="clients-tab"
-                            onclick="switchTab('clients')" 
+                            data-action="switchTab" data-params='{"tab":'clients'}' 
                             data-tab="clients">
                         <span aria-hidden="true">👥</span> Ügyfelek
                     </button>
@@ -72,7 +72,7 @@
                             role="tab"
                             aria-selected="false"
                             aria-controls="templates-tab"
-                            onclick="switchTab('templates')" 
+                            data-action="switchTab" data-params='{"tab":'templates'}' 
                             data-tab="templates">
                         <span aria-hidden="true">📋</span> Sablonok
                     </button>
@@ -84,7 +84,7 @@
                     <div id="documents-tab" class="tab-pane active">
                         <div class="tab-header">
                             <h3>Dokumentumok</h3>
-                            <button class="btn btn-small btn-primary" onclick="createNewDocument()">
+                            <button class="btn btn-small btn-primary" data-action="createDocument">
                                 + Új dokumentum
                             </button>
                         </div>
@@ -105,7 +105,7 @@
                     <div id="blocks-tab" class="tab-pane">
                         <div class="tab-header">
                             <h3>Blokk Csoportok</h3>
-                            <button class="btn btn-small btn-primary" onclick="createNewGroup()">
+                            <button class="btn btn-small btn-primary" data-action="createGroup">
                                 + Új csoport
                             </button>
                         </div>
@@ -118,7 +118,7 @@
                     <div id="clients-tab" class="tab-pane">
                         <div class="tab-header">
                             <h3>Ügyfelek</h3>
-                            <button class="btn btn-small btn-primary" onclick="createNewClient()">
+                            <button class="btn btn-small btn-primary" data-action="createClient">
                                 + Új ügyfél
                             </button>
                         </div>
@@ -131,7 +131,7 @@
                     <div id="templates-tab" class="tab-pane">
                         <div class="tab-header">
                             <h3>Sablonok</h3>
-                            <button class="btn btn-small btn-primary" onclick="saveCurrentAsTemplate()">
+                            <button class="btn btn-small btn-primary" data-action="saveTemplate">
                                 + Mentés sablonként
                             </button>
                         </div>
@@ -185,7 +185,7 @@
         <div class="modal">
             <div class="modal-header">
                 <h2>Blokk szerkesztése</h2>
-                <button class="close-btn" onclick="closeBlockEditor()">&times;</button>
+                <button class="close-btn" data-action="closeBlockEditor">&times;</button>
             </div>
             <div class="modal-body">
                 <label>Blokk neve:</label>
@@ -195,8 +195,8 @@
                 <div id="block-content-editor"></div>
             </div>
             <div class="modal-footer">
-                <button class="btn btn-secondary" onclick="closeBlockEditor()">Mégse</button>
-                <button class="btn btn-primary" onclick="saveBlock()">Mentés</button>
+                <button class="btn btn-secondary" data-action="closeBlockEditor">Mégse</button>
+                <button class="btn btn-primary" data-action="saveBlock">Mentés</button>
             </div>
         </div>
     </div>
@@ -206,15 +206,15 @@
         <div class="modal modal-large">
             <div class="modal-header">
                 <h2 id="client-modal-title">Ügyfél rizikóértékelési űrlap</h2>
-                <button class="close-btn" onclick="closeClientEditor()">&times;</button>
+                <button class="close-btn" data-action="closeClientEditor">&times;</button>
             </div>
             <div class="modal-body" style="max-height: 70vh; overflow-y: auto;">
                 <!-- Comprehensive CRM Form will be generated here dynamically -->
                 <div id="comprehensive-crm-form"></div>
             </div>
             <div class="modal-footer">
-                <button class="btn btn-secondary" onclick="closeClientEditor()">Bezárás</button>
-                <button class="btn btn-primary" onclick="saveComprehensiveClient()">Mentés</button>
+                <button class="btn btn-secondary" data-action="closeClientEditor">Bezárás</button>
+                <button class="btn btn-primary" data-action="saveClient">Mentés</button>
             </div>
         </div>
     </div>
@@ -231,8 +231,8 @@
                 </div>
             </div>
             <div class="modal-footer">
-                <button class="btn btn-secondary" onclick="closeClientEditor()">Mégse</button>
-                <button class="btn btn-primary" onclick="saveClient()">Mentés</button>
+                <button class="btn btn-secondary" data-action="closeClientEditor">Mégse</button>
+                <button class="btn btn-primary" data-action="saveClient">Mentés</button>
             </div>
         </div>
     </div>
@@ -242,30 +242,30 @@
         <div class="modal">
             <div class="modal-header">
                 <h2>Mentés és Visszaállítás</h2>
-                <button class="close-btn" onclick="closeBackupModal()">&times;</button>
+                <button class="close-btn" data-action="closeBackupModal">&times;</button>
             </div>
             <div class="modal-body">
                 <div class="backup-section">
                     <h3>💾 Teljes mentés létrehozása</h3>
                     <p>Az összes dokumentum, ügyfél, sablon és blokk mentése JSON fájlba.</p>
-                    <button class="btn btn-primary" onclick="createBackup()">Mentés letöltése</button>
+                    <button class="btn btn-primary" data-action="createBackup">Mentés letöltése</button>
                 </div>
                 <hr>
                 <div class="backup-section">
                     <h3>📂 Visszaállítás fájlból</h3>
                     <p>Korábbi mentés visszaállítása. <strong>FIGYELEM:</strong> Ez felülírja a jelenlegi adatokat!</p>
                     <input type="file" id="backup-file-input" accept=".json">
-                    <button class="btn btn-secondary" onclick="restoreBackup()">Visszaállítás</button>
+                    <button class="btn btn-secondary" data-action="restoreBackup">Visszaállítás</button>
                 </div>
                 <hr>
                 <div class="backup-section">
                     <h3>🗑️ Minden adat törlése</h3>
                     <p>Az összes adat végleges törlése. Ez a művelet <strong>nem visszavonható!</strong></p>
-                    <button class="btn btn-danger" onclick="clearAllData()">Minden törlése</button>
+                    <button class="btn btn-danger" data-action="clearAllData">Minden törlése</button>
                 </div>
             </div>
             <div class="modal-footer">
-                <button class="btn btn-secondary" onclick="closeBackupModal()">Bezárás</button>
+                <button class="btn btn-secondary" data-action="closeBackupModal">Bezárás</button>
             </div>
         </div>
     </div>
@@ -275,15 +275,15 @@
         <div class="modal">
             <div class="modal-header">
                 <h2>Csoport szerkesztése</h2>
-                <button class="close-btn" onclick="closeGroupEditor()">&times;</button>
+                <button class="close-btn" data-action="closeGroupEditor">&times;</button>
             </div>
             <div class="modal-body">
                 <label>Csoport neve:</label>
                 <input type="text" id="group-name-input" class="form-input">
             </div>
             <div class="modal-footer">
-                <button class="btn btn-secondary" onclick="closeGroupEditor()">Mégse</button>
-                <button class="btn btn-primary" onclick="saveGroup()">Mentés</button>
+                <button class="btn btn-secondary" data-action="closeGroupEditor">Mégse</button>
+                <button class="btn btn-primary" data-action="saveGroup">Mentés</button>
             </div>
         </div>
     </div>
@@ -294,6 +294,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.0.6/purify.min.js"></script>
     
     <!-- Application JavaScript -->
     <script src="app.js"></script>
