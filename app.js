@@ -43,6 +43,310 @@ const quillToolbarOptions = [
     ['clean']
 ];
 
+// ==================== SANITIZATION LAYER ====================
+
+/**
+ * Input sanitization to prevent XSS attacks
+ */
+const Sanitizer = {
+    /**
+     * Sanitize HTML content (for block content)
+     * @param {string} dirty - Unsanitized HTML
+     * @returns {string} Clean HTML
+     */
+    html(dirty) {
+        if (typeof DOMPurify !== 'undefined') {
+            return DOMPurify.sanitize(dirty, {
+                ALLOWED_TAGS: ['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'br', 'ul', 'ol', 'li', 
+                               'strong', 'em', 'u', 's', 'a', 'span', 'div', 'img', 'table', 
+                               'thead', 'tbody', 'tr', 'th', 'td'],
+                ALLOWED_ATTR: ['href', 'target', 'class', 'style', 'src', 'alt', 'width', 'height'],
+                ALLOW_DATA_ATTR: false
+            });
+        }
+        console.warn('DOMPurify not loaded, sanitization skipped');
+        return dirty;
+    },
+    
+    /**
+     * Sanitize plain text (escape HTML entities)
+     * @param {string} text - Plain text
+     * @returns {string} Escaped text
+     */
+    text(text) {
+        if (!text) return '';
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    },
+    
+    /**
+     * Sanitize object attributes recursively
+     * @param {Object} obj - Object to sanitize
+     * @returns {Object} Sanitized object
+     */
+    object(obj) {
+        if (!obj || typeof obj !== 'object') return obj;
+        
+        const clean = Array.isArray(obj) ? [] : {};
+        
+        Object.keys(obj).forEach(key => {
+            if (typeof obj[key] === 'string') {
+                clean[key] = this.text(obj[key]);
+            } else if (typeof obj[key] === 'object' && obj[key] !== null) {
+                clean[key] = this.object(obj[key]);
+            } else {
+                clean[key] = obj[key];
+            }
+        });
+        
+        return clean;
+    }
+};
+
+// ==================== EVENT CLEANUP REGISTRY ====================
+
+/**
+ * Event listener cleanup to prevent memory leaks
+ */
+class EventCleanup {
+    constructor(name = 'default') {
+        this.name = name;
+        this.listeners = [];
+    }
+    
+    /**
+     * Add event listener with tracking
+     * @param {Element} element - DOM element
+     * @param {string} event - Event name
+     * @param {Function} handler - Event handler
+     * @param {Object} options - Event options
+     */
+    add(element, event, handler, options) {
+        element.addEventListener(event, handler, options);
+        this.listeners.push({ element, event, handler, options });
+    }
+    
+    /**
+     * Remove all tracked event listeners
+     */
+    removeAll() {
+        this.listeners.forEach(({ element, event, handler, options }) => {
+            try {
+                element.removeEventListener(event, handler, options);
+            } catch (e) {
+                console.warn('Failed to remove listener:', e);
+            }
+        });
+        this.listeners = [];
+    }
+    
+    /**
+     * Remove specific event listener
+     * @param {Element} element - DOM element
+     * @param {string} event - Event name
+     * @param {Function} handler - Event handler
+     */
+    remove(element, event, handler) {
+        const index = this.listeners.findIndex(l => 
+            l.element === element && 
+            l.event === event && 
+            l.handler === handler
+        );
+        
+        if (index !== -1) {
+            const listener = this.listeners[index];
+            try {
+                listener.element.removeEventListener(listener.event, listener.handler, listener.options);
+            } catch (e) {
+                console.warn('Failed to remove listener:', e);
+            }
+            this.listeners.splice(index, 1);
+        }
+    }
+    
+    /**
+     * Get number of tracked listeners
+     * @returns {number} Count
+     */
+    count() {
+        return this.listeners.length;
+    }
+}
+
+// Global cleanup instances
+const globalCleanup = new EventCleanup('global');
+const modalCleanup = new EventCleanup('modals');
+const formCleanup = new EventCleanup('forms');
+
+// ==================== EVENT DELEGATION SYSTEM ====================
+
+/**
+ * Central event handler registry for inline onclick replacement
+ */
+const EventRegistry = {
+    handlers: new Map(),
+    
+    /**
+     * Register an action handler
+     * @param {string} action - Action name
+     * @param {Function} handler - Handler function
+     */
+    register(action, handler) {
+        this.handlers.set(action, handler);
+    },
+    
+    /**
+     * Handle an action
+     * @param {string} action - Action name
+     * @param {Object} params - Parameters
+     * @param {Event} event - DOM event
+     */
+    handle(action, params, event) {
+        const handler = this.handlers.get(action);
+        if (handler) {
+            try {
+                handler(params, event);
+            } catch (error) {
+                console.error(`Error handling action "${action}":`, error);
+                showNotification('Hiba történt. Próbálja újra.', 'error');
+            }
+        } else {
+            console.warn('No handler registered for action:', action);
+        }
+    },
+    
+    /**
+     * Check if action has handler
+     * @param {string} action - Action name
+     * @returns {boolean} Has handler
+     */
+    has(action) {
+        return this.handlers.has(action);
+    }
+};
+
+/**
+ * Initialize event delegation (replaces inline onclick handlers)
+ */
+function initEventDelegation() {
+    // Single click handler for entire document
+    const clickHandler = function(e) {
+        const target = e.target.closest('[data-action]');
+        if (!target) return;
+        
+        const action = target.dataset.action;
+        let params = {};
+        
+        try {
+            params = target.dataset.params ? JSON.parse(target.dataset.params) : {};
+        } catch (error) {
+            console.error('Failed to parse action params:', error);
+        }
+        
+        EventRegistry.handle(action, params, e);
+    };
+    
+    globalCleanup.add(document, 'click', clickHandler);
+    console.log('✅ Event delegation initialized');
+}
+
+/**
+ * Register all event handlers
+ */
+function registerEventHandlers() {
+    // Documents
+    EventRegistry.register('createDocument', () => createNewDocument());
+    EventRegistry.register('openDocument', (params) => openDocument(params.id));
+    EventRegistry.register('deleteDocument', (params, e) => {
+        e.stopPropagation();
+        deleteDocument(params.id);
+    });
+    EventRegistry.register('duplicateDocument', (params, e) => {
+        e.stopPropagation();
+        duplicateDocument(params.id);
+    });
+    EventRegistry.register('exportWord', () => exportToWord());
+    
+    // UI
+    EventRegistry.register('switchTab', (params) => switchTab(params.tab));
+    
+    // Blocks
+    EventRegistry.register('addBlock', () => addBlockToDocument());
+    EventRegistry.register('editBlock', (params) => editDocumentBlock(params.index));
+    EventRegistry.register('deleteBlock', (params, e) => {
+        e.stopPropagation();
+        deleteDocumentBlock(params.index);
+    });
+    EventRegistry.register('moveBlockUp', (params, e) => {
+        e.stopPropagation();
+        moveBlockUp(params.index);
+    });
+    EventRegistry.register('moveBlockDown', (params, e) => {
+        e.stopPropagation();
+        moveBlockDown(params.index);
+    });
+    EventRegistry.register('activateInlineEditor', (params) => {
+        activateInlineBlockEditor(params.index);
+    });
+    
+    // Clients
+    EventRegistry.register('createClient', () => createNewClient());
+    EventRegistry.register('editClient', (params) => editClient(params.id));
+    EventRegistry.register('deleteClient', (params, e) => {
+        e.stopPropagation();
+        deleteClient(params.id);
+    });
+    EventRegistry.register('saveClient', () => saveComprehensiveClient());
+    
+    // Templates
+    EventRegistry.register('saveTemplate', () => saveAsTemplate());
+    EventRegistry.register('loadTemplate', (params) => loadTemplate(params.id));
+    EventRegistry.register('deleteTemplate', (params, e) => {
+        e.stopPropagation();
+        deleteTemplate(params.id);
+    });
+    
+    // Groups & Blocks management
+    EventRegistry.register('createGroup', () => createNewGroup());
+    EventRegistry.register('editGroup', (params) => editGroup(params.id));
+    EventRegistry.register('deleteGroup', (params, e) => {
+        e.stopPropagation();
+        deleteGroup(params.id);
+    });
+    EventRegistry.register('createBlock', () => openBlockEditor());
+    EventRegistry.register('editBlockTemplate', (params, e) => {
+        e.stopPropagation();
+        editBlock(params.groupId, params.blockId);
+    });
+    EventRegistry.register('deleteBlockTemplate', (params, e) => {
+        e.stopPropagation();
+        deleteBlock(params.groupId, params.blockId);
+    });
+    EventRegistry.register('addBlockToDoc', (params) => {
+        addBlockToDocument(params.groupId, params.blockId);
+    });
+    EventRegistry.register('addBlockTemplate', (params) => {
+        openBlockEditor(params.groupId);
+    });
+    
+    // Modals
+    EventRegistry.register('closeBlockEditor', () => closeBlockEditor());
+    EventRegistry.register('closeClientEditor', () => closeClientEditor());
+    EventRegistry.register('closeGroupEditor', () => closeGroupEditor());
+    EventRegistry.register('closeBackupModal', () => closeBackupModal());
+    EventRegistry.register('saveBlock', () => saveBlock());
+    EventRegistry.register('saveGroup', () => saveGroup());
+    
+    // Backup & Settings
+    EventRegistry.register('openBackup', () => openBackupModal());
+    EventRegistry.register('createBackup', () => createBackup());
+    EventRegistry.register('restoreBackup', () => restoreBackup());
+    EventRegistry.register('clearAllData', () => clearAllData());
+    
+    console.log('✅ Event handlers registered:', EventRegistry.handlers.size);
+}
+
 // ==================== DEFAULT BLOCK TEMPLATES ====================
 // Initialize with default group
 groups = {
@@ -169,6 +473,10 @@ function initApp() {
         return;
     }
     
+    // Initialize event delegation system (replaces inline onclick)
+    initEventDelegation();
+    registerEventHandlers();
+    
     // Load data from localStorage
     loadAllData();
     
@@ -194,23 +502,25 @@ function initApp() {
     // Set up auto-save on title change
     const titleInput = document.getElementById('document-title');
     if (titleInput) {
-        titleInput.addEventListener('input', debounce(function() {
+        const titleHandler = debounce(function() {
             if (currentDocumentId) {
                 updateDocumentTitle();
                 showNotification('💾 Dokumentum mentve', 'success');
             }
-        }, 1000));
+        }, 1000);
+        globalCleanup.add(titleInput, 'input', titleHandler);
     }
     
     // Set up client selector auto-save
     const clientSelector = document.getElementById('client-selector');
     if (clientSelector) {
-        clientSelector.addEventListener('change', function() {
+        const clientHandler = function() {
             if (currentDocumentId) {
                 assignClientToDocument();
                 showNotification('👤 Ügyfél hozzárendelve', 'success');
             }
-        });
+        };
+        globalCleanup.add(clientSelector, 'change', clientHandler);
     }
     
     // Show welcome message on first load
@@ -233,7 +543,8 @@ function initApp() {
         documents: Object.keys(documents).length,
         clients: Object.keys(clients).length,
         templates: Object.keys(templates).length,
-        groups: Object.keys(groups).length
+        groups: Object.keys(groups).length,
+        eventListeners: globalCleanup.count()
     });
 }
 
@@ -618,16 +929,20 @@ function renderDocumentBlocks() {
     }
     
     canvas.innerHTML = doc.blocks.map((block, index) => `
-        <div class="document-block" data-block-index="${index}" data-block-id="${block.id || 'block-' + index}">
+        <div class="document-block" data-block-index="${index}" data-block-id="${Sanitizer.text(block.id || 'block-' + index)}">
             <div class="block-drag-handle" title="Húzd ide a blokk mozgatásához">⋮⋮</div>
             <div class="block-toolbar">
-                <button class="btn btn-small btn-icon" onclick="deleteDocumentBlock(${index})" title="Törlés">🗑️</button>
+                <button class="btn btn-small btn-icon" 
+                        data-action="deleteBlock" 
+                        data-params='{"index":${index}}'
+                        title="Törlés">🗑️</button>
             </div>
             <div class="block-editor-container" 
                  data-block-index="${index}" 
-                 onclick="activateInlineBlockEditor(${index})"
+                 data-action="activateInlineEditor"
+                 data-params='{"index":${index}}'
                  title="Kattints a szerkesztéshez">
-                ${block.content}
+                ${Sanitizer.html(block.content)}
             </div>
         </div>
     `).join('');
@@ -856,8 +1171,16 @@ function saveBlock() {
  * Close block editor modal
  */
 function closeBlockEditor() {
+    // Clean up Quill editor instance
+    if (blockEditorQuill) {
+        // Quill doesn't have a destroy method, but we can null the reference
+        blockEditorQuill = null;
+    }
+    
     document.getElementById('block-editor-modal').classList.remove('active');
     currentEditingBlock = null;
+    
+    console.log('✅ Block editor closed');
 }
 
 // ==================== BLOCK TEMPLATES MANAGEMENT ====================
@@ -876,20 +1199,34 @@ function renderBlocksList() {
     
     container.innerHTML = groupArray.map(([groupId, group]) => {
         const blocksHtml = Object.entries(group.blocks).map(([blockId, block]) => `
-            <div class="block-item" draggable="true" onclick="addBlockToDocument('${groupId}', '${blockId}')">
-                <span>${block.name}</span>
-                <button class="btn btn-small btn-icon" onclick="event.stopPropagation(); editBlockTemplate('${groupId}', '${blockId}')" title="Szerkesztés">✏️</button>
+            <div class="block-item" draggable="true" 
+                 data-action="addBlockToDoc" 
+                 data-params='{"groupId":"${groupId}","blockId":"${blockId}"}'>
+                <span>${Sanitizer.text(block.name)}</span>
+                <button class="btn btn-small btn-icon" 
+                        data-action="editBlockTemplate" 
+                        data-params='{"groupId":"${groupId}","blockId":"${blockId}"}'
+                        title="Szerkesztés">✏️</button>
             </div>
         `).join('');
         
         return `
             <div class="block-group">
                 <div class="block-group-header">
-                    <span class="block-group-title">${group.name}</span>
+                    <span class="block-group-title">${Sanitizer.text(group.name)}</span>
                     <div>
-                        <button class="btn btn-small btn-icon" onclick="editGroup('${groupId}')" title="Csoport szerkesztése">✏️</button>
-                        <button class="btn btn-small btn-icon" onclick="addBlockTemplate('${groupId}')" title="Új blokk">➕</button>
-                        ${groupId !== 'group-0' ? `<button class="btn btn-small btn-icon" onclick="deleteGroup('${groupId}')" title="Csoport törlése">🗑️</button>` : ''}
+                        <button class="btn btn-small btn-icon" 
+                                data-action="editGroup" 
+                                data-params='{"id":"${groupId}"}'
+                                title="Csoport szerkesztése">✏️</button>
+                        <button class="btn btn-small btn-icon" 
+                                data-action="addBlockTemplate" 
+                                data-params='{"groupId":"${groupId}"}'
+                                title="Új blokk">➕</button>
+                        ${groupId !== 'group-0' ? `<button class="btn btn-small btn-icon" 
+                                data-action="deleteGroup" 
+                                data-params='{"id":"${groupId}"}'
+                                title="Csoport törlése">🗑️</button>` : ''}
                     </div>
                 </div>
                 ${blocksHtml}
@@ -1134,8 +1471,21 @@ function deleteClient(clientId) {
  * Close client editor modal
  */
 function closeClientEditor() {
+    // Clean up CRM form event listeners (prevent memory leaks)
+    if (typeof window.cleanupCRMForm === 'function') {
+        window.cleanupCRMForm();
+    }
+    
+    // Clear the form container
+    const formContainer = document.getElementById('comprehensive-crm-form');
+    if (formContainer) {
+        formContainer.innerHTML = '';
+    }
+    
     document.getElementById('client-editor-modal').classList.remove('active');
     editingClientId = null;
+    
+    console.log('✅ Client editor closed and cleaned up');
 }
 
 /**
@@ -1788,42 +2138,52 @@ function saveInlineBlockContent() {
         // Get HTML content from Quill
         const newContent = activeBlockEditor.root.innerHTML;
         
+        // Sanitize before saving (XSS protection)
+        const sanitizedContent = Sanitizer.html(newContent);
+        
         // Update block content
-        doc.blocks[activeBlockIndex].content = newContent;
+        doc.blocks[activeBlockIndex].content = sanitizedContent;
         doc.updatedAt = Date.now();
         
         // Save document to localStorage
         saveToStorage(`document_${currentDocumentId}`, doc);
         
-        console.log('💾 Inline block content saved for block', activeBlockIndex);
+        console.log('💾 Inline block content saved (sanitized) for block', activeBlockIndex);
         
         // Update stats
         updateDocumentStats(doc);
         
     } catch (error) {
         console.error('Error saving inline block content:', error);
+        showNotification('Hiba a mentés során', 'error');
     }
 }
 
 /**
  * Global click listener to deactivate editor when clicking outside
+ * Managed by globalCleanup registry to prevent memory leaks
  */
-document.addEventListener('click', function(e) {
-    // Don't deactivate if clicking:
-    // - Inside the active editor container
-    // - On a Quill toolbar
-    // - On a toolbar button
-    // - On block toolbar buttons
-    if (!activeBlockEditor) return;
+(function initInlineEditorClickHandler() {
+    const handleOutsideClick = function(e) {
+        // Don't deactivate if clicking:
+        // - Inside the active editor container
+        // - On a Quill toolbar
+        // - On a toolbar button
+        // - On block toolbar buttons
+        if (!activeBlockEditor) return;
+        
+        const clickedInsideEditor = e.target.closest('.block-editor-container');
+        const clickedOnToolbar = e.target.closest('.ql-toolbar');
+        const clickedOnBlockToolbar = e.target.closest('.block-toolbar');
+        
+        if (!clickedInsideEditor && !clickedOnToolbar && !clickedOnBlockToolbar) {
+            deactivateInlineBlockEditor();
+        }
+    };
     
-    const clickedInsideEditor = e.target.closest('.block-editor-container');
-    const clickedOnToolbar = e.target.closest('.ql-toolbar');
-    const clickedOnBlockToolbar = e.target.closest('.block-toolbar');
-    
-    if (!clickedInsideEditor && !clickedOnToolbar && !clickedOnBlockToolbar) {
-        deactivateInlineBlockEditor();
-    }
-}, true); // Use capture phase
+    // Register with cleanup - use capture phase
+    globalCleanup.add(document, 'click', handleOutsideClick, true);
+})();
 
 // ==================== IMAGE UPLOAD ====================
 
@@ -1972,7 +2332,7 @@ function showNotification(message, type = 'info') {
  * Handle keyboard shortcuts
  */
 function setupKeyboardShortcuts() {
-    document.addEventListener('keydown', function(e) {
+    const keydownHandler = function(e) {
         // Ctrl/Cmd + S - Save document
         if ((e.ctrlKey || e.metaKey) && e.key === 's') {
             e.preventDefault();
@@ -1999,7 +2359,10 @@ function setupKeyboardShortcuts() {
                 showNotification('⚠️ Nincs megnyitott dokumentum', 'warning');
             }
         }
-    });
+    };
+    
+    // Register with cleanup registry
+    globalCleanup.add(document, 'keydown', keydownHandler);
 }
 
 /**
